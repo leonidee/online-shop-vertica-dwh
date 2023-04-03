@@ -48,8 +48,11 @@
 
 - `stg-data-loader-dag` - Заполняет STG слои и является триггером для `dds-data-loader-dag`
 
-![dwh-creator-dag](https://github.com/Leonidee/online-shop-vertica-dwh/blob/master/addons/dwh-creator-dag.png?raw=true)
+![stg-data-loader-dag](https://github.com/Leonidee/online-shop-vertica-dwh/blob/master/addons/stg-data-loader-dag.png?raw=true)
 
 - `dds-data-loader-dag` - Финальный даг, заполняющий DDS слой хранилища
 
-![dwh-creator-dag](https://github.com/Leonidee/online-shop-vertica-dwh/blob/master/addons/dwh-creator-dag.png?raw=true)
+![dds-data-loader-dag](https://github.com/Leonidee/online-shop-vertica-dwh/blob/master/addons/dds-data-loader-dag.png?raw=true)
+
+![dds-data-loader-dag-2](https://github.com/Leonidee/online-shop-vertica-dwh/blob/master/addons/dds-data-loader-dag-2.png?raw=true)
+
