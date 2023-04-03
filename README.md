@@ -22,11 +22,13 @@
 
 # Raw data
 
-За базу взят открытый датасет Kaggle - Brazilian E-Commerce Public Dataset by Olist, к которому он-топ генерируются дополнительные атрибуты  с помощью open-source библиотеки Faker (например, имена и email таблицы customers).
+За базу взят открытый датасет Kaggle - [Brazilian E-Commerce Public Dataset by Olist](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce), к которому он-топ генерируются дополнительные атрибуты  с помощью open-source библиотеки Faker (например, имена и email таблицы customers).
+
+
 
 # Data Model
 
-Основное хранилище на Vertica состоит из двух слоев:
+### Основное хранилище на Vertica состоит из двух слоев:
 
 - STG слой - Хранит очищенные данные, перелитые из s3 без связей и модели данных
 
@@ -38,8 +40,16 @@
 
 - `dwh-creator-dag` - Инициализирует DWH в Vertica. Создает все таблицы и связи между ними. Запускается один раз при первой развертке docker-compose. Является триггером для `get-data-dag`
 
+![dwh-creator-dag](https://github.com/Leonidee/online-shop-vertica-dwh/blob/master/addons/dwh-creator-dag.png?raw=true)
+
 - `get-data-dag` - Забирает сырые данные с s3, очищает и подготавливает их, загружает в чистый слой s3. Запускается каждый день в 01:00 по UTC и является триггером для `stg-data-loader-dag`
+
+![get-data-dag](https://github.com/Leonidee/online-shop-vertica-dwh/blob/master/addons/get-data-dag.png?raw=true)
 
 - `stg-data-loader-dag` - Заполняет STG слои и является триггером для `dds-data-loader-dag`
 
+![dwh-creator-dag](https://github.com/Leonidee/online-shop-vertica-dwh/blob/master/addons/dwh-creator-dag.png?raw=true)
+
 - `dds-data-loader-dag` - Финальный даг, заполняющий DDS слой хранилища
+
+![dwh-creator-dag](https://github.com/Leonidee/online-shop-vertica-dwh/blob/master/addons/dwh-creator-dag.png?raw=true)
