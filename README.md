@@ -32,6 +32,8 @@
 
 - DDS слой - Реализован по модели данных Data Valult. Содержит Хабы, Линки, Саттелиты по SCD1 и исторические Саттелиты по SCD2 
 
+![data-model](https://github.com/Leonidee/online-shop-vertica-dwh/blob/master/addons/dds-layer-data-model.png?raw=true)
+
 # DAGs
 
 - `dwh-creator-dag` - Инициализирует DWH в Vertica. Создает все таблицы и связи между ними. Запускается один раз при первой развертке docker-compose. Является триггером для `get-data-dag`
