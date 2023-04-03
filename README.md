@@ -24,7 +24,7 @@
 
 За базу взят открытый датасет Kaggle - [Brazilian E-Commerce Public Dataset by Olist](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce), к которому он-топ генерируются дополнительные атрибуты  с помощью open-source библиотеки Faker (например, имена и email таблицы customers).
 
-
+![data-pipeline](https://github.com/Leonidee/online-shop-vertica-dwh/blob/master/addons/data-pipeline.png?raw=true)
 
 # Data Model
 
