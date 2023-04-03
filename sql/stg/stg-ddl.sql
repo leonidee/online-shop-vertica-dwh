@@ -62,8 +62,8 @@ CREATE TABLE LEONIDGRISHENKOVYANDEXRU__STAGING.reviews
     review_score     int,
     comment_title    varchar(100),
     comment_message  varchar(300),
-    creation_date    timestamp,
-    answer_timestamp timestamp,
+    creation_date    timestamp(0),
+    answer_timestamp timestamp(0),
     is_commented     boolean
 )
     ORDER BY review_id
@@ -91,7 +91,7 @@ CREATE TABLE LEONIDGRISHENKOVYANDEXRU__STAGING.order_items
     order_item_id       int,
     product_id          varchar(100),
     seller_id           varchar(100),
-    shipping_limit_date timestamp,
+    shipping_limit_date timestamp(0),
     price               float,
     freight_value       float
 )
@@ -105,11 +105,11 @@ CREATE TABLE LEONIDGRISHENKOVYANDEXRU__STAGING.orders
     order_id                      varchar(100) NOT NULL PRIMARY KEY ENABLED,
     customer_id                   varchar(100),
     order_status                  varchar(50),
-    order_purchase_timestamp      timestamp,
-    order_approved_at             timestamp,
-    order_delivered_carrier_date  timestamp,
-    order_delivered_customer_date timestamp,
-    order_estimated_delivery_date timestamp
+    order_purchase_timestamp      timestamp(0),
+    order_approved_at             timestamp(0),
+    order_delivered_carrier_date  timestamp(0),
+    order_delivered_customer_date timestamp(0),
+    order_estimated_delivery_date timestamp(0)
 )
     ORDER BY order_id
     SEGMENTED BY hash(order_id) ALL NODES;

@@ -4,7 +4,6 @@ from pandas import read_csv
 
 from datetime import datetime
 import os
-import shutil
 from pathlib import Path
 from faker import Faker
 
@@ -12,19 +11,16 @@ from concurrent.futures import ThreadPoolExecutor
 
 from vertica_python.vertica.cursor import Cursor
 
-
 # for testing
 from tabulate import tabulate
 
 # package
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from package.utils import Connector, get_dev_logger
+from package.utils import Connector
 from package.errors import S3ServiceError, FileSystemError, VerticaError
 
-# gets airflow default logger and use it
-# logger = logging.getLogger("airflow.task")
-logger = get_dev_logger(logger_name=str(Path(Path(__file__).name)))
+logger = logging.getLogger("airflow.task")
 
 
 class DWHCreator:
@@ -83,6 +79,62 @@ class DWHCreator:
             cur.execute(query)
 
             logger.info(f"Hubs of DDS layer were created successfully.")
+        except Exception:
+            logger.exception(
+                f"Unable to execute DDL query! Initializing process failed."
+            )
+            raise VerticaError
+
+    def create_dds_links(self) -> None:
+        logger.info("Creating Links.")
+
+        SQL = "dds/links-ddl"
+
+        try:
+            logger.info(f"Reading `{SQL}.sql`.")
+            query = Path(self.path_to_sql, f"{SQL}.sql").read_text(encoding="UTF-8")
+            logger.info(f"`{SQL}.sql` loaded.")
+        except Exception:
+            logger.exception(
+                f"Unable to read `{SQL}.sql`! Initializing process failed."
+            )
+            raise FileSystemError
+
+        try:
+            logger.info(f"Executing DDL query for Links.")
+
+            cur = self.dwh_conn.cursor()
+            cur.execute(query)
+
+            logger.info(f"Links of DDS layer were created successfully.")
+        except Exception:
+            logger.exception(
+                f"Unable to execute DDL query! Initializing process failed."
+            )
+            raise VerticaError
+
+    def create_dds_satelities(self) -> None:
+        logger.info("Creating Satelities.")
+
+        SQL = "dds/satelities-ddl"
+
+        try:
+            logger.info(f"Reading `{SQL}.sql`.")
+            query = Path(self.path_to_sql, f"{SQL}.sql").read_text(encoding="UTF-8")
+            logger.info(f"`{SQL}.sql` loaded.")
+        except Exception:
+            logger.exception(
+                f"Unable to read `{SQL}.sql`! Initializing process failed."
+            )
+            raise FileSystemError
+
+        try:
+            logger.info(f"Executing DDL query for Satelities.")
+
+            cur = self.dwh_conn.cursor()
+            cur.execute(query)
+
+            logger.info(f"Satelities of DDS layer were created successfully.")
         except Exception:
             logger.exception(
                 f"Unable to execute DDL query! Initializing process failed."
@@ -2180,6 +2232,238 @@ class DDSDataLoader:
             )
             raise VerticaError
 
+    def update_sat_order_details(self):
+
+        LOAD_DTTM = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        LOAD_SOURCE = "s3:data-ice-lake-04"
+        TABLE = "sat_order_details"
+
+        logger.info(f"Updating `{TABLE}` table.")
+
+        SQL = f"""
+            DROP TABLE IF EXISTS sat_order_details_tmp;
+
+            CREATE LOCAL TEMP TABLE sat_order_details_tmp ON COMMIT PRESERVE ROWS AS
+            SELECT
+                ho.id               AS order_id,
+                o.order_purchase_timestamp,
+                o.order_approved_at,
+                o.order_delivered_carrier_date,
+                o.order_delivered_customer_date,
+                o.order_estimated_delivery_date,
+                '{LOAD_DTTM}'::timestamp(0) AS load_dttm,
+                '{LOAD_SOURCE}'             AS load_src
+            FROM LEONIDGRISHENKOVYANDEXRU__STAGING.orders o
+                    LEFT JOIN LEONIDGRISHENKOVYANDEXRU__DWH.hub_orders ho ON o.order_id = ho.order_id
+            WHERE 1 = 1
+                UNSEGMENTED ALL NODES;
+
+            MERGE INTO LEONIDGRISHENKOVYANDEXRU__DWH.sat_order_details AS tgt
+            USING sat_order_details_tmp AS src
+            ON src.order_id = tgt.order_id
+            WHEN MATCHED
+                THEN
+                UPDATE
+                SET
+                    order_purchase_timestamp      = src.order_purchase_timestamp,
+                    order_approved_at             = src.order_approved_at,
+                    order_delivered_carrier_date  = src.order_delivered_carrier_date,
+                    order_delivered_customer_date = src.order_delivered_customer_date,
+                    order_estimated_delivery_date = src.order_estimated_delivery_date,
+                    load_dttm                     = src.load_dttm,
+                    load_src                      = src.load_src
+            WHEN NOT MATCHED THEN
+                INSERT
+                (order_id, order_purchase_timestamp, order_approved_at, order_delivered_carrier_date, order_delivered_customer_date,
+                order_estimated_delivery_date, load_dttm, load_src)
+                VALUES
+                    (src.order_id, src.order_purchase_timestamp, src.order_approved_at, src.order_delivered_carrier_date,
+                    src.order_delivered_customer_date, src.order_estimated_delivery_date, src.load_dttm, src.load_src);
+
+            DROP TABLE IF EXISTS sat_order_details_tmp;
+        """
+
+        try:
+            cur = self.dwh_conn.cursor()
+            logger.info("Executing update statement...")
+            cur.execute(operation=SQL)
+            logger.info(f"`{TABLE}` was successfully updated.")
+        except Exception:
+            logger.exception(
+                f"Unable to execute update statement. Updating process for `{TABLE}` failed!"
+            )
+            raise VerticaError
+
+    def update_sat_order_statuses(self):
+
+        LOAD_DTTM = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        LOAD_SOURCE = "s3:data-ice-lake-04"
+        TABLE = "sat_order_statuses"
+
+        logger.info(f"Updating `{TABLE}` table.")
+
+        SQL = f"""
+            DROP TABLE IF EXISTS sat_order_statuses_tmp;
+
+            CREATE LOCAL TEMP TABLE sat_order_statuses_tmp ON COMMIT PRESERVE ROWS AS
+            SELECT
+                ho.id                      AS join_key,
+                ho.id                      AS order_id,
+                o.order_status,
+                '{LOAD_DTTM}'::timestamp(0) AS load_dttm,
+                '{LOAD_SOURCE}'             AS load_src
+            FROM LEONIDGRISHENKOVYANDEXRU__STAGING.orders o
+                    LEFT JOIN LEONIDGRISHENKOVYANDEXRU__DWH.hub_orders ho ON o.order_id = ho.order_id
+            UNION ALL
+            SELECT
+                NULL                       AS join_key,
+                ho.id                      AS order_id,
+                o.order_status,
+                '{LOAD_DTTM}'::timestamp(0) AS load_dttm,
+                '{LOAD_SOURCE}'             AS load_src
+            FROM LEONIDGRISHENKOVYANDEXRU__STAGING.orders o
+                    LEFT JOIN LEONIDGRISHENKOVYANDEXRU__DWH.hub_orders ho ON o.order_id = ho.order_id
+                    JOIN LEONIDGRISHENKOVYANDEXRU__DWH.sat_order_statuses sos
+                        ON ho.id = sos.order_id
+            WHERE 1 = 1
+            AND (o.order_status <> sos.order_status AND sos.valid_to IS NULL);
+
+            MERGE INTO LEONIDGRISHENKOVYANDEXRU__DWH.sat_order_statuses AS tgt
+            USING sat_order_statuses_tmp AS src
+            ON src.join_key = tgt.order_id
+            WHEN MATCHED AND src.order_status <> tgt.order_status
+                THEN
+                UPDATE
+                SET
+                    valid_to = getutcdate()::timestamp(0)
+            WHEN NOT MATCHED THEN
+                INSERT (order_id, order_status, valid_from, valid_to, load_dttm, load_src)
+                VALUES
+                    (src.order_id, src.order_status, getutcdate()::timestamp(0), NULL, src.load_dttm, src.load_src);
+
+            DROP TABLE IF EXISTS sat_order_statuses_tmp;
+        """
+
+        try:
+            cur = self.dwh_conn.cursor()
+            logger.info("Executing update statement...")
+            cur.execute(operation=SQL)
+            logger.info(f"`{TABLE}` was successfully updated.")
+        except Exception:
+            logger.exception(
+                f"Unable to execute update statement. Updating process for `{TABLE}` failed!"
+            )
+            raise VerticaError
+
+    def update_sat_coordinates(self):
+
+        LOAD_DTTM = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        LOAD_SOURCE = "s3:data-ice-lake-04"
+        TABLE = "sat_coordinates"
+
+        logger.info(f"Updating `{TABLE}` table.")
+
+        SQL = f"""
+            DROP TABLE IF EXISTS sat_coordinates_tmp;
+
+            CREATE LOCAL TEMP TABLE sat_coordinates_tmp ON COMMIT PRESERVE ROWS AS
+            SELECT
+                DISTINCT
+                hg.id               AS geolocation_id,
+                g.latitude,
+                g.longitude,
+                '{LOAD_DTTM}'::timestamp(0) AS load_dttm,
+                '{LOAD_SOURCE}'             AS load_src
+            FROM LEONIDGRISHENKOVYANDEXRU__STAGING.geolocation g
+                    LEFT JOIN LEONIDGRISHENKOVYANDEXRU__DWH.hub_geolocations hg ON hash(g.zip_code, g.latitude, g.longitude) = hg.id
+            WHERE 1 = 1
+                UNSEGMENTED ALL NODES;
+
+            MERGE INTO LEONIDGRISHENKOVYANDEXRU__DWH.sat_coordinates AS tgt
+            USING sat_coordinates_tmp AS src
+            ON src.geolocation_id = tgt.geolocation_id
+            WHEN MATCHED
+                THEN
+                UPDATE
+                SET
+                    latitude  = src.latitude,
+                    longitude = src.longitude,
+                    load_dttm = src.load_dttm,
+                    load_src  = src.load_src
+            WHEN NOT MATCHED THEN
+                INSERT
+                    (geolocation_id, latitude, longitude, load_dttm, load_src)
+                VALUES
+                    (src.geolocation_id, src.latitude, src.longitude, src.load_dttm, src.load_src);
+
+            DROP TABLE IF EXISTS sat_coordinates_tmp;
+        """
+
+        try:
+            cur = self.dwh_conn.cursor()
+            logger.info("Executing update statement...")
+            cur.execute(operation=SQL)
+            logger.info(f"`{TABLE}` was successfully updated.")
+        except Exception:
+            logger.exception(
+                f"Unable to execute update statement. Updating process for `{TABLE}` failed!"
+            )
+            raise VerticaError
+
+    def update_sat_cities_info(self):
+
+        LOAD_DTTM = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        LOAD_SOURCE = "s3:data-ice-lake-04"
+        TABLE = "sat_cities_info"
+
+        logger.info(f"Updating `{TABLE}` table.")
+
+        SQL = f"""
+            DROP TABLE IF EXISTS sat_cities_info_tmp;
+
+            CREATE LOCAL TEMP TABLE sat_cities_info_tmp ON COMMIT PRESERVE ROWS AS
+            SELECT DISTINCT
+                hc.id               AS city_id,
+                g.city              AS city_name,
+                g.state,
+                '{LOAD_DTTM}'::timestamp(0) AS load_dttm,
+                '{LOAD_SOURCE}'             AS load_src
+            FROM LEONIDGRISHENKOVYANDEXRU__STAGING.geolocation g
+                    LEFT JOIN LEONIDGRISHENKOVYANDEXRU__DWH.hub_cities hc ON hash(g.city, g.state) = hc.id
+            WHERE 1 = 1
+                UNSEGMENTED ALL NODES;
+
+            MERGE INTO LEONIDGRISHENKOVYANDEXRU__DWH.sat_cities_info AS tgt
+            USING sat_cities_info_tmp AS src
+            ON src.city_id = tgt.city_id
+            WHEN MATCHED
+                THEN
+                UPDATE
+                SET
+                    city_name = src.city_name,
+                    state     = src.state,
+                    load_dttm = src.load_dttm,
+                    load_src  = src.load_src
+            WHEN NOT MATCHED THEN
+                INSERT
+                    (city_id, city_name, state, load_dttm, load_src)
+                VALUES
+                    (src.city_id, src.city_name, src.state, src.load_dttm, src.load_src);
+
+            DROP TABLE IF EXISTS sat_cities_info_tmp;
+        """
+
+        try:
+            cur = self.dwh_conn.cursor()
+            logger.info("Executing update statement...")
+            cur.execute(operation=SQL)
+            logger.info(f"`{TABLE}` was successfully updated.")
+        except Exception:
+            logger.exception(
+                f"Unable to execute update statement. Updating process for `{TABLE}` failed!"
+            )
+            raise VerticaError
+
 
 def do_testing() -> None:
 
@@ -2187,6 +2471,9 @@ def do_testing() -> None:
 
     # creator = DWHCreator()
     # creator.create_stg_layer()
+    # creator.create_dds_hubs()
+    # creator.create_dds_links()
+    # creator.create_dds_satelities()
 
     # getter = DataGetter()
     # getter.prepare_customers_data()
@@ -2210,7 +2497,7 @@ def do_testing() -> None:
     # data_loader.load_order_items_data_to_dwh()
     # data_loader.load_orders_data_to_dwh()
 
-    data_loader = DDSDataLoader()
+    # data_loader = DDSDataLoader()
     # data_loader.update_hub_customers()
     # data_loader.update_hub_orders()
     # data_loader.update_hub_products()
@@ -2219,6 +2506,7 @@ def do_testing() -> None:
     # data_loader.update_hub_reviews()
     # data_loader.update_hub_geolocations()
     # data_loader.update_hub_cities()
+
     # data_loader.update_l_order_customer()
     # data_loader.update_l_customer_geolocation()
     # data_loader.update_l_geolocation_city()
@@ -2235,7 +2523,11 @@ def do_testing() -> None:
     # data_loader.update_sat_category()
     # data_loader.update_sat_products_names()
     # data_loader.update_sat_products_dimensions()
-    data_loader.update_sat_sellers_info()
+    # data_loader.update_sat_sellers_info()
+    # data_loader.update_sat_order_details()
+    # data_loader.update_sat_order_statuses()
+    # data_loader.update_sat_coordinates()
+    # data_loader.update_sat_cities_info()
 
 
 if __name__ == "__main__":

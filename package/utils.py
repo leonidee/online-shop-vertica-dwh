@@ -1,69 +1,29 @@
 import sys
 import boto3
-
-# logging
+from pathlib import Path
 import logging
 
-# typing
-from enum import StrEnum
-from vertica_python import Connection
-from boto3.session import Session
-
-import vertica_python
-
-# fs
-from pathlib import Path
-
-import coloredlogs
+# environment
 from dotenv import load_dotenv, find_dotenv
 from os import getenv
 
+# typing
+from enum import Enum
+from vertica_python import Connection
+from boto3.session import Session
+
+# sql
+import vertica_python
+
 # package
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-
 from package.errors import DotEnvError, S3ServiceError, VerticaError
 
-
-def get_dev_logger(logger_name: str) -> logging.Logger:
-    """This logger is for development and testing purposes, don't use it in airflow production environment."""
-
-    logger = logging.getLogger(name=logger_name)
-
-    coloredlogs.install(logger=logger, level="INFO")
-    logger.setLevel(level=logging.INFO)
-
-    if logger.hasHandlers():
-        logger.handlers.clear()
-
-    logger_handler = logging.StreamHandler(stream=sys.stdout)
-
-    colored_formatter = coloredlogs.ColoredFormatter(
-        fmt="[%(asctime)s UTC] {%(name)s:%(lineno)d} %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        level_styles=dict(
-            info=dict(color="green"),
-            error=dict(color="red", bold=False, bright=True),
-        ),
-        field_styles=dict(
-            asctime=dict(color="magenta"),
-            name=dict(color="cyan"),
-            levelname=dict(color="yellow", bold=True, bright=True),
-            lineno=dict(color="white"),
-        ),
-    )
-
-    logger_handler.setFormatter(fmt=colored_formatter)
-    logger.addHandler(logger_handler)
-    logger.propagate = False
-
-    return logger
-
-
-logger = get_dev_logger(logger_name=str(Path(Path(__file__).name)))
+logger = logging.getLogger("airflow.task")
 
 
 class Connector:
-    def __init__(self, type: StrEnum("dwh", "ice-lake")) -> None:
+    def __init__(self, type: Enum("dwh", "ice-lake")) -> None:
         self.type = type
 
     def _get_credentials(self) -> dict:
@@ -154,28 +114,3 @@ class Connector:
                 raise S3ServiceError
 
         return conn
-
-
-def do_testing() -> None:
-    conn = Connector(type="dwh").connect()
-    v = "v_catalog"
-
-    cur = conn.cursor()
-    cur.execute(
-        f"""
-        SELECT
-            table_schema,
-            table_name,
-            column_name
-        FROM {v}.columns;
-        """
-    )
-    res = cur.fetchall()
-    conn.close()
-    print(res)
-
-    conn = Connector(type="ice-lake").connect()
-
-
-if __name__ == "__main__":
-    do_testing()
