@@ -20,7 +20,7 @@
 
 - Stage 4 - Заполняет Хабы, Линки и Саттелиты DDS слоя хранилища
 
-![pipeline](https://github.com/Leonidee/online-shop-vertica-dwh/blob/master/addons/pipeline.png?raw=true)
+![pipeline-2](https://github.com/Leonidee/online-shop-vertica-dwh/blob/master/addons/pipeline-2.png?raw=true)
 
 # Raw data
 
